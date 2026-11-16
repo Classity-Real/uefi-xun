@@ -1,0 +1,70 @@
+#
+# Boot Shim Configs
+#
+[boot_shim]
+requires_kernel_header = true
+
+#
+# UEFI FD Configs
+#
+# Carried over unchanged from tb128fu.toml: xun's splash/ramoops/removed
+# block occupies the same 0x5C000000..0x63900000 footprint, with the same
+# free gap at 0x5D200000..0x60000000 that this FD sits inside. See
+# MemoryMapLib.c and PORTING.md for the readout this is based on.
+#
+[uefi_fd]
+base = 0x5FC00000
+size = 0x300000
+
+#
+# Android Boot Image Kernel Configs
+#
+[boot_image_kernel]
+kernel_compression = "gzip"
+append_dtb         = true
+
+#
+# Android Boot Image Configs
+#
+# *** UNVERIFIED / MAIN OPEN RISK (see PORTING.md) ***
+#
+# tb128fu uses a header v1 boot image (single boot.img carrying kernel +
+# ramdisk + DTB, loaded via `fastboot boot`). xun's stock boot image is
+# header v4, with the ramdisk split out into a separate init_boot/vendor_boot
+# partition pair. header_version is set to 4 below to match xun's actual
+# partition layout, but nothing downstream in this tree has been checked
+# against a v4 image yet:
+#   * Whether `fastboot boot` even accepts a v4-packed FD+kernel+ramdisk the
+#     same way it accepts a v1 image, or whether the payload has to be
+#     assembled into vendor_boot instead.
+#   * Whether kernel_offset/ramdisk_offset/tags_offset below (copied from
+#     tb128fu's v1 layout) mean the same thing for a v4 header, or need to
+#     be replaced with v4's dedicated ramdisk-table fields.
+# Resolve this BEFORE trusting a Phase 1 build -- see Resources/Scripts and
+# PORTING.md, "Unverified".
+#
+[boot_image]
+header_version = 4
+base = 0x80000000
+kernel_offset = 0x00008000
+ramdisk_offset = 0x01000000
+tags_offset = 0x00000100
+pagesize = 4096
+
+#
+# Storage Configs
+#
+# NOTE: this [storage] section is not part of uefi-tb128fu's toml schema and
+# is not consumed by build_uefi.py/DeviceBuild.py as written -- it is kept
+# here purely as a documentation anchor until the xun device repo (the
+# UniXNU-xun analogue of UniXNU-tb128fu, which owns board.toml and the real
+# build-time config) is built out in Phase 0/2. xun boots from eMMC
+# (fstab.emmc; block device mmcblk0, controller at 4784000.sdhci), NOT UFS.
+# This is Phase 2's job (no eMMC block driver exists in this tree yet).
+#
+[storage]
+media              = "emmc"
+controller_mmio    = 0x04784000
+boot_slot          = "a"
+userdata_partition = "mmcblk0p91"
+userdata_first_lba = 0x1D16000

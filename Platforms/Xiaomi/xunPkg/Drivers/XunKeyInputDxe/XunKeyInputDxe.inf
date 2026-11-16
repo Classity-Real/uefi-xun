@@ -1,0 +1,36 @@
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = XunKeyInputDxe
+  FILE_GUID                      = 90327C05-96E5-441E-8675-969805CA6524
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = XunKeyInputDxeEntry
+
+[Sources]
+  XunKeyInputDxe.c
+  XunKeys.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DevicePathLib
+  UefiRuntimeServicesTableLib
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiLib
+
+[Protocols]
+  gEfiSimpleTextInProtocolGuid                  ## PRODUCES
+  gEfiDevicePathProtocolGuid                    ## PRODUCES
+
+[Guids]
+  gEfiEventExitBootServicesGuid                 ## CONSUMES
+  gEfiGlobalVariableGuid                        ## PRODUCES
+
+[Depex]
+  gEfiTimerArchProtocolGuid AND gEfiVariableArchProtocolGuid AND gEfiVariableWriteArchProtocolGuid

@@ -1,0 +1,81 @@
+name: Build xunPkg
+
+# Manual only, by design: this is an unverified, in-progress platform
+# package (see Platforms/Xiaomi/xunPkg/PORTING.md). It is not meant to
+# fire automatically on every push while the open risks there are
+# unresolved.
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Build type"
+        required: true
+        default: "DEBUG"
+        type: choice
+        options:
+          - DEBUG
+          - RELEASE
+      tb128fu_ref:
+        description: "xVanTuring/uefi-tb128fu ref to overlay onto (branch, tag or commit)"
+        required: true
+        default: "main"
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this overlay (xunPkg)
+        uses: actions/checkout@v4
+        with:
+          path: uefi-xun
+
+      - name: Check out uefi-tb128fu (base Mu-Silicium tree)
+        uses: actions/checkout@v4
+        with:
+          repository: xVanTuring/uefi-tb128fu
+          ref: ${{ inputs.tb128fu_ref }}
+          submodules: false
+          path: uefi-tb128fu
+
+      - name: Fetch required submodules of uefi-tb128fu
+        working-directory: uefi-tb128fu
+        run: |
+          git submodule update --init --depth 1 -- \
+            Binaries \
+            Common/Mu \
+            Common/Mu_OEM_Sample \
+            Silicium-ACPI \
+            Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl
+
+      - name: Overlay xunPkg onto the base tree
+        run: |
+          set -eux
+          mkdir -p uefi-tb128fu/Platforms/Xiaomi
+          cp -r uefi-xun/Platforms/Xiaomi/xunPkg uefi-tb128fu/Platforms/Xiaomi/xunPkg
+          cp uefi-xun/Resources/Configs/xun.toml uefi-tb128fu/Resources/Configs/xun.toml
+          if [ -f uefi-xun/Resources/DTBs/xun.dtb ]; then
+            cp uefi-xun/Resources/DTBs/xun.dtb uefi-tb128fu/Resources/DTBs/xun.dtb
+          else
+            echo "::warning::Resources/DTBs/xun.dtb is not present yet -- this build is expected to fail until a real xun device-tree dump is added (see PORTING.md, Unverified)."
+          fi
+
+      - name: Install build dependencies
+        working-directory: uefi-tb128fu
+        env:
+          CI_BUILD: "true"
+        run: ./setup_env.sh --package-manager apt
+
+      - name: Build xun firmware
+        working-directory: uefi-tb128fu
+        run: ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
+
+      - name: Upload build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xun-uefi-${{ inputs.build_mode }}
+          path: |
+            uefi-tb128fu/Build/xunPkg/**/FV/SILICIUM_UEFI.fd
+            uefi-tb128fu/Build/xunPkg/**/*.log
+          if-no-files-found: warn
