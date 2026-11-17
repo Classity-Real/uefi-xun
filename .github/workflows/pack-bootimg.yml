@@ -66,21 +66,16 @@ jobs:
           fi
 
       - name: Download the firmware artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: xun-uefi-DEBUG
-          run-id: ${{ steps.run.outputs.id }}
-          github-token: ${{ github.token }}
-          path: artifact
-
-      - name: Fall back to the RELEASE artifact
-        if: ${{ failure() }}
-        uses: actions/download-artifact@v4
-        with:
-          name: xun-uefi-RELEASE
-          run-id: ${{ steps.run.outputs.id }}
-          github-token: ${{ github.token }}
-          path: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eux
+          run_id="${{ steps.run.outputs.id }}"
+          mkdir -p artifact
+          if gh run download "$run_id" --repo "${{ github.repository }}" --name xun-uefi-DEBUG --dir artifact; then
+            exit 0
+          fi
+          gh run download "$run_id" --repo "${{ github.repository }}" --name xun-uefi-RELEASE --dir artifact
 
       - name: Find SILICIUM_UEFI.fd and pack Mu-xun.img
         run: |
