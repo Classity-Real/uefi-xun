@@ -66,8 +66,17 @@ jobs:
           CI_BUILD: "true"
         run: ./setup_env.sh --package-manager apt
 
+      - name: Install system nasm (bypass broken mu_nasm nuget)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
+          which nasm
+          nasm -v
+
       - name: Build xun firmware
         working-directory: uefi-tb128fu
+        env:
+          NASM_PREFIX: /usr/bin/
         run: ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
 
       - name: Upload build output
