@@ -80,3 +80,44 @@ comment of `Library/MemoryMapLib/MemoryMapLib.c`; summary:
 - Touch IRQ/reset GPIO numbers (478/484) and the FT8203 firmware filename
   were not independently re-checked by this dump -- still inherited from
   the upstream reading.
+
+## Direct readout, 2026-11-17 part two (this repo, user's own unit, live device tree)
+
+The symlink bug above was fixed (`cp -rL /sys/firmware/devicetree/base ...`
+instead of a plain `tar` on the symlink) and a second dump
+(`xun_dump2.tar`, 15 MB, 13,598 entries) was taken off the same unit,
+this time with the real, complete device tree. This resolves most of what
+the first dump above left open:
+
+- **Resolved, reversing the earlier finding: `cont_splash_region` exists.**
+  A `reserved-memory` node is present at `0x5C000000`, size `0xF00000`
+  (15 MiB), with `label = "cont_splash_region"` and phandle `0x347` --
+  exactly the address and size already assumed in this package's
+  `Include/DXE.inc` and `MemoryMapLib.c`. No Linux node references this
+  phandle, which is normal: ABL paints the splash framebuffer there before
+  Linux ever runs, so Linux has no reason to consume it. This had been
+  flagged as the single biggest Phase 1 risk; it no longer is. The only
+  remaining question is whether ABL actually leaves live pixels there on
+  this specific device, which only an actual `fastboot boot` test can show.
+- **Corrected:** touch IRQ/reset GPIOs are TLMM GPIO 80 (IRQ) and TLMM
+  GPIO 86 (reset) -- not 478/484 as the non-rooted upstream reading had it.
+  Read directly from the `touch@0` node's `focaltech,irq-gpio` and
+  `focaltech,reset-gpio` properties. The node also confirmed the touch bus
+  is `qupv3_0_geni_se@4ac0000/spi@4a80000` (i.e. `4a80000.spi`), and
+  `focaltech,display-coords` = `[0, 0, 11999, 19199]`, consistent with the
+  1200x1920 panel at 10x oversampling.
+- **New finding, not covered by either upstream or the first dump:
+  volume-up key is on the PM6125 PMIC's SPMI GPIO block, not TLMM.** The
+  `gpio_keys/vol_up` node sits under
+  `qcom,spmi@1c40000/qcom,pm6125@0/pinctrl@c000`, GPIO 5 -- a completely
+  different access mechanism (SPMI PMIC arbiter transactions) from the flat
+  TLMM MMIO read this package's `XunKeyInputDxe`/`XunKeys.h` (ported from
+  tb128fu, which does use TLMM GPIO 5 for the same key) currently performs.
+  The matching GPIO number on both devices is coincidental. This means the
+  volume-up-as-Enter key does not currently work on xun; see
+  `Platforms/Xiaomi/xunPkg/PORTING.md` item 4. Deferred to Phase 5 --
+  doesn't block Phase 1 (menu rendering).
+- Panel `m84_42_03_0c` additionally confirmed directly from the device
+  tree's active panel node (the other two known variants,
+  `m84_35_03_0b` and `m84_36_02_0a`, are present as inactive nodes in the
+  same tree, consistent with one shared kernel build across panel SKUs).

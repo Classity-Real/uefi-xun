@@ -35,19 +35,40 @@
 //     inherited: `qcom,mdss_dsi_panel_m84_42_03_0c_fhdp_video` (matches
 //     KernelZero123's m84_42_03_0c reading) and `focaltech_ts_spi` with
 //     `tpsensor=focaltech_ts_ab` (FocalTech over SPI, consistent with
-//     FT8203). GPIO numbers for touch IRQ/reset are still not confirmed --
-//     the live device-tree pull needed for that failed (see PORTING.md).
+//     FT8203).
 //
-// STILL OPEN: whether xun's ABL leaves a live `cont_splash_region`. The
-// `/proc/iomem` reserved ranges above match the expected address range,
-// but that only proves the address space is set aside, not that a splash
-// framebuffer is actually live there -- the device-tree pull that would
-// prove it one way or the other (grep for reserved-memory node names)
-// failed in this session because `tar` was run on the `/proc/device-tree`
-// symlink without dereferencing it. Re-run with `cp -rL
-// /sys/firmware/devicetree/base dt_dump` (or `tar -h`) to get a real
-// answer. Until then, treat "Display Reserved" below as reserved address
-// space only -- NOT a confirmed live framebuffer. See PORTING.md.
+// A second dump the same day, after fixing the first attempt's symlink
+// bug, pulled the REAL live device tree and resolved the remaining open
+// questions:
+//
+//   * `cont_splash_region` DOES exist: a reserved-memory node at exactly
+//     0x5C000000, 15 MiB, with `label = "cont_splash_region"` -- the
+//     standard Qualcomm name for exactly this purpose. This REVERSES the
+//     earlier "no cont_splash_region found" reading (which came from
+//     KernelZero123's non-rooted readout). No Linux driver references it
+//     by phandle, but that is expected and not a problem: ABL paints the
+//     splash pixels there before Linux ever boots, so Linux has no reason
+//     to reference it either (tb128fu, where SimpleFbDxe is known to work,
+//     is presumably the same). Still not PROVEN live without an actual
+//     `fastboot boot` test -- see PORTING.md.
+//
+//   * Touch IRQ/reset GPIOs are CONFIRMED, and were WRONG in the earlier
+//     reading: the live device tree's `touch@0` node (on
+//     `qupv3_0_geni_se@4ac0000/spi@4a80000`, confirming "4a80000.spi" over
+//     the "spi0.0" naming ambiguity) gives `focaltech,irq-gpio` = TLMM
+//     GPIO 80 and `focaltech,reset-gpio` = TLMM GPIO 86 -- NOT the 478/484
+//     inherited from docs/DEVICE.md. `focaltech,display-coords` reads
+//     [0,0,11999,19199], i.e. 1200x1920 at 10x oversampling, confirming the
+//     touch resolution already assumed.
+//
+//   * Volume-up key location is CONFIRMED, and the existing
+//     `XunKeyInputDxe`/`XunKeys.h` (inherited from tb128fu) reads the WRONG
+//     peripheral for it: the live device tree's `gpio_keys/vol_up` node is
+//     on `qcom,pm6125@0/pinctrl@c000` -- the PM6125 PMIC's own SPMI-based
+//     GPIO block -- not a flat TLMM MMIO register the way tb128fu's volume
+//     key is. Both devices happen to use GPIO number "5", which is a
+//     coincidence, not evidence the same access method works. See
+//     XunKeys.h for what needs to change (Phase 5, not a Phase 1 blocker).
 #include <Library/MemoryMapLib.h>
 
 STATIC
@@ -126,10 +147,12 @@ gMemoryDescriptor[] = {
   {"UFS UFS REGS",       0x04800000, 0x00020000, AddDev, MMAP_IO, UNCACHEABLE, MmIO, NS_DEVICE},
   {"SDHCI eMMC",         0x04784000, 0x00001000, AddDev, MMAP_IO, UNCACHEABLE, MmIO, NS_DEVICE},
   {"QUPV3_0_GSI",        0x04A00000, 0x000D0000, AddDev, MMAP_IO, UNCACHEABLE, MmIO, NS_DEVICE},
-  // Touch is FocalTech FT8203 over SPI. QUPV3_0_GSI above covers the QUP SPI
-  // block; the specific SPI chip-select for touch (board docs call it both
-  // "spi0.0" and "4a80000.spi" in different sources -- needs to be confirmed
-  // from the live device tree, not assumed) is a Phase 3 item, not mapped here.
+  // Touch is FocalTech over SPI at qupv3_0_geni_se@4ac0000/spi@4a80000
+  // (CONFIRMED from the live device tree, 2026-11-17 -- "4a80000.spi", not
+  // "spi0.0"). IRQ = TLMM GPIO 80, reset = TLMM GPIO 86 (also confirmed;
+  // corrects an earlier 478/484 reading). QUPV3_0_GSI above covers the QUP
+  // block generally; the touch driver itself is a Phase 3 item, not mapped
+  // here.
   {"USB30_PRIM",         0x04E00000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO, NS_DEVICE},
   {"MDSS",               0x05E00000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO, NS_DEVICE},
   {"SMMU",               0x0C600000, 0x00080000, AddDev, MMAP_IO, UNCACHEABLE, MmIO, NS_DEVICE},

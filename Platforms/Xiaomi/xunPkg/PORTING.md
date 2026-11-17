@@ -31,11 +31,12 @@ Xiaoxin Pad 2022.
 | Item | tb128fu | xun |
 |---|---|---|
 | Panel | 1200x2000, hx83102p | 1200x1920 portrait native (HUAXING `m84_42_03_0c`, video-mode FHD+) -- **confirmed directly from a live kernel cmdline** (`qcom,mdss_dsi_panel_m84_42_03_0c_fhdp_video`) on the user's own unit, 2026-11-17, matching KernelZero123's independent reading; two other known panel variants (`m84_35_03_0b`, `m84_36_02_0a`) exist on other units |
-| Touch | Himax HX83102E over SPI | FocalTech FT8203 over SPI -- driver name **confirmed** from the same cmdline (`focaltech_ts_spi.tpsensor=focaltech_ts_ab`); IRQ GPIO 478 / reset GPIO 484 / firmware `focaltech_ts_fw_huaxing_ft8203.bin` still inherited, not independently confirmed -- Phase 3, not implemented here |
+| Touch | Himax HX83102E over SPI | FocalTech over SPI at `spi@4a80000` (CONFIRMED from the live device tree, 2026-11-17, resolving the `spi0.0`/`4a80000.spi` ambiguity); IRQ **TLMM GPIO 80**, reset **TLMM GPIO 86** (CONFIRMED, corrects an earlier 478/484 reading); display-coords confirm 1200x1920 at 10x oversampling -- Phase 3, not implemented here |
 | Storage | UFS (NativeUfs path) | eMMC via `4784000.sdhci` (`mmcblk0`), slot A, `boot_a`/`boot_b` 128 MiB each, `userdata` on `mmcblk0p91` -- confirmed by position/size in a live `/proc/partitions` + GPT read, 2026-11-17 -- Phase 2, not implemented here |
 | Boot image | header v1, single boot.img, `fastboot flash boot_a` works, `fastboot boot` buffer is too small | header **v4, confirmed** by parsing the real `boot_a`/`vendor_boot_a` image headers, 2026-11-17 -- kernel/ramdisk/tags offsets also confirmed matching. Whether `fastboot boot` works the same way against a v4 image is still **unverified**, see below |
 | DRAM layout | two banks, no gap | **two regions with one real hole, confirmed from `/proc/iomem`, 2026-11-17** -- corrected from an earlier 3-bank estimate: `0x40000000`+`0x3BB00000` (ends `0x7BB00000`), then `0x80000000`+`0x1C0000000` (7 GiB, single contiguous span, no second gap at `0xC0000000` as previously assumed). Consistent with an 8 GB RAM xun variant; re-check on a different RAM SKU. |
-| Splash framebuffer | ABL leaves a live `cont_splash_region` for `SimpleFbDxe` to scan out | **Still unconfirmed either way.** `/proc/iomem` confirms the expected address range is reserved, but a device-tree pull meant to settle this definitively failed in the 2026-11-17 session (see "Unverified", item 1) -- still the single biggest open risk in this package |
+| Splash framebuffer | ABL leaves a live `cont_splash_region` for `SimpleFbDxe` to scan out | `cont_splash_region` **CONFIRMED present** in the live device tree, 2026-11-17: a reserved-memory node at `0x5C000000`, 15 MiB, literally labeled `"cont_splash_region"`. This **reverses** an earlier "not found" reading (from a non-rooted readout). No Linux driver references it by phandle, which is expected (ABL/Linux handoff, not a Linux-consumed binding) -- see "Unverified", item 1 for what's still genuinely open |
+| Volume-up key | TLMM GPIO 5, flat MMIO read | **CONFIRMED different peripheral, 2026-11-17:** PM6125 PMIC's own GPIO 5, over the SPMI PMIC arbiter -- `XunKeyInputDxe` as inherited reads the wrong hardware (TLMM, not SPMI) and does not work yet. See "Unverified", item 4 |
 
 ## Changes in this package
 
@@ -48,23 +49,26 @@ Xiaoxin Pad 2022.
   `FV_IMAGE` file GUID (so this doesn't collide with tb128fu's FV if both
   trees are ever built from the same workspace).
 * `Include/DXE.inc` -- same driver list as tb128fu's, `Tb128fuKeyInputDxe`
-  renamed to `XunKeyInputDxe`, `SimpleFbDxe`'s comment updated to flag the
-  missing `cont_splash_region`.
+  renamed to `XunKeyInputDxe`. `SimpleFbDxe`'s comment updated 2026-11-17:
+  `cont_splash_region` is now confirmed present (see table above), reversing
+  an earlier "missing" note.
 * `Include/RAW.inc` -- ported comment, flagged as unverified whether xun's
   ABL is also a single statically-linked loader with no raw files to pull in
   (tb128fu's is; Xiaomi's Khaje/bengal ABL has not been checked).
 * `Drivers/XunKeyInputDxe` -- `Tb128fuKeyInputDxe` renamed, new FILE_GUID.
-  GPIO numbering (volume up on TLMM GPIO 5 as Enter) assumed unchanged from
-  tb128fu -- **not confirmed against xun's own device tree.**
-* `Library/MemoryMapLib` -- rebuilt twice: first from `docs/DEVICE.md`'s
+  **Confirmed broken for xun, 2026-11-17:** the inherited implementation
+  reads TLMM GPIO 5 via flat MMIO; xun's volume-up key is actually on the
+  PM6125 PMIC's SPMI-based GPIO 5, a completely different access path. See
+  `XunKeys.h`'s file header for what needs replacing -- Phase 5, not a
+  Phase 1 blocker (the menu still renders without a working Enter key).
+* `Library/MemoryMapLib` -- rebuilt in stages: first from `docs/DEVICE.md`'s
   readout (a 3-bank estimate), then corrected 2026-11-17 against a live
-  `/proc/iomem` + boot image header read off a real unit -- the actual DRAM
-  layout is two regions with a hole at `0x7BB00000`..`0x80000000`, not
-  three banks with a second gap at `0xC0000000`. Splash/ramoops/removed
-  block address range confirmed unchanged; SDHCI eMMC controller region at
-  `0x04784000`; Boot Image/Ramdisk placement confirmed from the real
-  `vendor_boot_a` header (kernel 0x8000, ramdisk 0x1000000, tags 0x100,
-  relative to base 0x80000000).
+  `/proc/iomem` + boot image header read (DRAM is two regions with a hole
+  at `0x7BB00000`..`0x80000000`, not three banks; splash/ramoops/removed
+  range confirmed unchanged; Boot Image/Ramdisk placement confirmed from
+  `vendor_boot_a`'s header), then again the same day against the real
+  device tree (confirmed `cont_splash_region` exists; corrected touch
+  IRQ/reset GPIOs; SDHCI eMMC controller region at `0x04784000`).
 * `Library/ConfigurationMapLib` -- SoC-generic entries kept as-is; board
   addresses inherited from tb128fu's tree (`SharedIMEMBaseAddr`,
   `DloadCookieAddr`, `TzAppsRegnAddr`/`Size`) are still flagged unverified
@@ -95,53 +99,62 @@ export UNIXNU_UEFI=$PWD/../uefi-xun
 
 ## Unverified
 
-These are the open questions blocking Phase 1, roughly in the order they
-need to be resolved. Items marked **RESOLVED** were settled 2026-11-17
-against a real xun unit's own `/proc/iomem`, `/proc/partitions`, GPT, and
-`boot_a`/`vendor_boot_a` image headers (see the readout summary at the top
-of `Library/MemoryMapLib/MemoryMapLib.c`).
+Two dumps were taken off the user's own xun unit on 2026-11-17: a root
+`/proc/iomem`/`/proc/partitions`/GPT/boot-image read, then (after fixing a
+symlink-dereference bug in the first attempt) a full live device-tree pull.
+Items marked **RESOLVED** were settled by one of those two dumps; see the
+readout summary at the top of `Library/MemoryMapLib/MemoryMapLib.c` for
+detail. Remaining order of what still blocks Phase 1:
 
-1. **No `cont_splash_region` confirmation on xun -- STILL OPEN, now the
-   single clearest blocker.** tb128fu's entire display strategy is "scan out
-   whatever ABL already left running." `/proc/iomem` confirms the expected
-   address range (`0x5C000000`..`0x5D200000`) is reserved, which is
-   necessary but not sufficient to prove a live framebuffer is actually
-   there. The direct check -- grepping the real device tree for a
-   `reserved-memory` node under that name -- was attempted but **failed**:
-   the dump ran `tar -cf ... /proc/device-tree`, which only archived the
-   symlink itself (`/proc/device-tree -> /sys/firmware/devicetree/base`),
-   not its contents. **To actually resolve this**, re-run with
-   dereferencing, e.g. (as root, in Termux or adb shell):
-   ```sh
-   cp -rL /sys/firmware/devicetree/base /sdcard/xun_dump/dt_dump
-   # or: tar -chf /sdcard/xun_dump/device-tree.tar -C / proc/device-tree
-   find /sdcard/xun_dump/dt_dump -iname "*splash*" -o -iname "*cont*"
-   ```
-   and look for a node under `reserved-memory` with `display-reserved`,
-   `cont-splash-mem`, or similar in its name/compatible string. If nothing
-   turns up, the display strategy inherited from tb128fu (Phase 1's whole
-   premise) needs to be rethought before anything else in this package is
-   worth trusting.
+1. **RESOLVED -- `cont_splash_region` exists.** The live device tree has a
+   `reserved-memory` node at `0x5C000000`, 15 MiB, literally labeled
+   `cont_splash_region`. This reverses the earlier "not found" reading
+   (which came from a non-rooted dump). No Linux driver references this
+   node by phandle, but that's expected, not a red flag -- ABL paints the
+   splash pixels there before Linux ever boots, so Linux has no reason to
+   reference it any more than tb128fu's own equivalent region does. **Still
+   not fully proven**: the only way to be certain ABL actually leaves live
+   pixels there (rather than the carve-out just existing, unused, for some
+   other reason) is to try `SimpleFbDxe` against it with a real
+   `fastboot boot` and see what's on screen. This is now the right next
+   step to attempt, not a reason to hold off.
 2. **RESOLVED -- boot image header v4.** Both `boot_a` and `vendor_boot_a`
    confirmed `header_version = 4` by directly parsing their Android boot
    image headers; `vendor_boot_a`'s header also confirmed the
    kernel/ramdisk/tags load offsets already in `xun.toml`/`MemoryMapLib.c`.
    **Still open:** whether `fastboot boot` accepts a v4-packed FD the same
    way it accepts tb128fu's v1 image, or whether the payload needs to go
-   through `vendor_boot`'s ramdisk-table mechanism instead. This blocks even
-   a first `fastboot boot` test of this package, and needs an actual attempt
-   on hardware to answer, not a header read.
+   through `vendor_boot`'s ramdisk-table mechanism instead. Needs an actual
+   attempt on hardware to answer, not a header read -- same next step as
+   item 1 above, both are answered by the same first boot attempt.
 3. Whether xun's ABL is also a thin Linux loader with no extractable vendor
    DXE (as assumed in `RAW.inc` and `PcdBuildXblHobs|FALSE`), or whether
    Xiaomi's bengal ABL differs from Lenovo's enough to carry real vendor DXE
-   modules worth extracting into a `Binaries/xun` directory.
-4. Whether the GPIO numbering in `XunKeyInputDxe` (volume up on TLMM GPIO 5)
-   holds on xun's own pinctrl, not just inherited from tb128fu.
+   modules worth extracting into a `Binaries/xun` directory. Not touched by
+   either 2026-11-17 dump.
+4. **RESOLVED (and the inherited driver is confirmed BROKEN) -- volume-up
+   key.** The live device tree's `gpio_keys/vol_up` node is on
+   `qcom,pm6125@0/pinctrl@c000` -- the PM6125 PMIC's own SPMI-based GPIO
+   block, not TLMM. `XunKeyInputDxe`/`XunKeys.h` as inherited from tb128fu
+   does a flat MMIO read of a TLMM register and will never see this key
+   press on xun. Both devices happen to use GPIO number "5", which is
+   coincidence, not equivalence. Fixing this needs an SPMI PMIC arbiter
+   transaction against PM6125 GPIO 5, not implemented -- Phase 5, not a
+   Phase 1 blocker (the menu still renders without a working Enter key).
 5. Whether `SharedIMEMBaseAddr`, `DloadCookieAddr`, `TzAppsRegnAddr`/`Size`
    in `ConfigurationMapLib` (confirmed against TB128FU's device tree, not
-   xun's) are safe to reuse. Not touched by the 2026-11-17 dump.
-6. **Narrowed, not fully resolved -- panel variant.** `m84_42_03_0c` is now
-   confirmed directly from a live cmdline on the user's own unit (not just
-   inherited from `docs/DEVICE.md`), so this specific unit is settled. The
-   other two known variants (`m84_35_03_0b`, `m84_36_02_0a`) may still exist
-   on other xun units in the wild and would need their own panel ID check.
+   xun's) are safe to reuse. Not touched by either 2026-11-17 dump.
+6. **RESOLVED for this unit -- panel variant.** `m84_42_03_0c` confirmed
+   both from the live cmdline and from the device tree's active panel node
+   (two other variant nodes, `m84_35_03_0b` and `m84_36_02_0a`, are also
+   compiled into the same tree but inactive on this unit). A different xun
+   unit could still boot with a different variant selected.
+7. **RESOLVED -- touch bus and GPIOs.** The live device tree's `touch@0`
+   node sits on `qupv3_0_geni_se@4ac0000/spi@4a80000` (confirming
+   `4a80000.spi`, not `spi0.0`), with `focaltech,irq-gpio` = TLMM GPIO 80
+   and `focaltech,reset-gpio` = TLMM GPIO 86 -- corrects an earlier 478/484
+   reading from the non-rooted dump. `focaltech,display-coords` confirms
+   1200x1920 at 10x oversampling, matching the already-assumed touch
+   resolution. The same node also carries Novatek-compatible properties for
+   a different panel SKU; FocalTech is confirmed active on this unit via
+   the kernel cmdline.

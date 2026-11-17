@@ -137,7 +137,7 @@ Poll (
   if (sk_sample (&mArbiter, &mKeys, &Pressed) != 0) {
     if (++mFailures >= MAX_FAILURES) {
       gBS->SetTimer (mTimer, TimerCancel, 0);
-      DEBUG ((DEBUG_ERROR, "ShengKeyInput: too many failed samples, polling stopped\n"));
+      DEBUG ((DEBUG_ERROR, "XunKeyInput: too many failed samples, polling stopped\n"));
     }
 
     return;
@@ -249,7 +249,7 @@ XunKeyInputDxeEntry (
     return EFI_UNSUPPORTED;
   }
 
-  DEBUG ((DEBUG_INFO, "XunKeyInput: TLMM GPIO 5 (volume up) as Enter\n"));
+  DEBUG ((DEBUG_INFO, "XunKeyInput: TB128FU-inherited TLMM GPIO5 read, WRONG for xun (volume up is PM6125 SPMI GPIO5), see XunKeys.h\n"));
 
   Status = gBS->CreateEvent (EVT_NOTIFY_WAIT, TPL_NOTIFY, KeyWait, NULL, &mInput.WaitForKey);
   if (EFI_ERROR (Status)) {
@@ -279,7 +279,7 @@ XunKeyInputDxeEntry (
   if (!EFI_ERROR (Status)) {
     EFI_STATUS  Listed = AddToConIn ();
 
-    DEBUG ((DEBUG_INFO, "ShengKeyInput: ConIn %r\n", Listed));
+    DEBUG ((DEBUG_INFO, "XunKeyInput: ConIn %r\n", Listed));
     //
     // Binds the console stack now when it is already loaded; otherwise the boot manager's connect pass does.
     //
