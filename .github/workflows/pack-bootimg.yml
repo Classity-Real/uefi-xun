@@ -1,0 +1,133 @@
+name: Pack xun boot image
+
+# Separate from Build xunPkg on purpose. That job only produces
+# SILICIUM_UEFI.fd. This one downloads a successful artifact, finds the
+# FD, and packs Mu-xun.img (BootShim + gzip + xun.dtb + mkbootimg).
+#
+# Flash target is boot_b only. Do not flash boot_a.
+on:
+  workflow_run:
+    workflows: ["Build xunPkg"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build xunPkg run id. Empty = latest successful run"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  pack:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out xun overlay (DTB + toml)
+        uses: actions/checkout@v4
+        with:
+          path: uefi-xun
+
+      - name: Check out BootShim and mkbootimg from uefi-tb128fu
+        uses: actions/checkout@v4
+        with:
+          repository: xVanTuring/uefi-tb128fu
+          ref: tb128fu
+          path: uefi-tb128fu
+          sparse-checkout: |
+            BootShim
+            Resources/Scripts/mkbootimg.py
+            Resources/ramdisk
+          sparse-checkout-cone-mode: false
+
+      - name: Resolve which build artifact to pack
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eux
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "id=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.run_id }}" ]; then
+            echo "id=${{ inputs.run_id }}" >> "$GITHUB_OUTPUT"
+          else
+            id=$(gh run list \
+              --repo "${{ github.repository }}" \
+              --workflow "Build xunPkg" \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            test -n "$id"
+            echo "id=$id" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: xun-uefi-DEBUG
+          run-id: ${{ steps.run.outputs.id }}
+          github-token: ${{ github.token }}
+          path: artifact
+
+      - name: Fall back to the RELEASE artifact
+        if: ${{ failure() }}
+        uses: actions/download-artifact@v4
+        with:
+          name: xun-uefi-RELEASE
+          run-id: ${{ steps.run.outputs.id }}
+          github-token: ${{ github.token }}
+          path: artifact
+
+      - name: Find SILICIUM_UEFI.fd and pack Mu-xun.img
+        run: |
+          set -eux
+          fd=$(find artifact -type f -name 'SILICIUM_UEFI.fd' | head -n 1)
+          test -n "$fd"
+          test -f uefi-xun/Resources/DTBs/xun.dtb
+          ls -l "$fd" uefi-xun/Resources/DTBs/xun.dtb
+
+          # xun.toml: base 0x5FC00000, size 0x300000, gzip, append dtb,
+          # header v4, stock pagesize 4096.
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+
+          make -C uefi-tb128fu/BootShim BootShim.bin \
+            CC="clang --target=aarch64-linux-gnu" \
+            OBJCOPY=llvm-objcopy \
+            REQUIRES_KERNEL_HEADER=1 \
+            FD_BASE=0x5fc00000 \
+            FD_SIZE=0x300000
+
+          cat uefi-tb128fu/BootShim/BootShim.bin "$fd" > /tmp/fd-bootshim
+          gzip -c -n /tmp/fd-bootshim > /tmp/fd-bootshim.gz
+          cat /tmp/fd-bootshim.gz uefi-xun/Resources/DTBs/xun.dtb > /tmp/xun-kernel
+
+          python3 uefi-tb128fu/Resources/Scripts/mkbootimg.py \
+            --kernel /tmp/xun-kernel \
+            --ramdisk uefi-tb128fu/Resources/ramdisk \
+            --header_version 4 \
+            --base 0x80000000 \
+            --kernel_offset 0x00008000 \
+            --ramdisk_offset 0x01000000 \
+            --tags_offset 0x00000100 \
+            --pagesize 4096 \
+            -o Mu-xun.img
+
+          ls -l Mu-xun.img
+          python3 - <<'PY'
+          import pathlib
+          data = pathlib.Path("Mu-xun.img").read_bytes()
+          assert data[:8] == b"ANDROID!", data[:8]
+          print(f"Mu-xun.img {len(data)} bytes, ANDROID! header ok")
+          PY
+
+      - name: Upload Mu-xun.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: xun-bootimg
+          path: Mu-xun.img
+          if-no-files-found: error
