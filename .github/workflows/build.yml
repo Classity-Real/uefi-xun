@@ -23,7 +23,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-workshop
     steps:
       - name: Check out this overlay (xunPkg)
         uses: actions/checkout@v4
@@ -66,18 +66,26 @@ jobs:
           CI_BUILD: "true"
         run: ./setup_env.sh --package-manager apt
 
-      - name: Install system nasm (bypass broken mu_nasm nuget)
+      - name: Install system nasm + bypass broken mu_nasm
         run: |
           sudo apt-get update
           sudo apt-get install -y nasm
           which nasm
           nasm -v
 
+          # Create a fake nuget package so SDE thinks mu_nasm is already installed
+          mkdir -p $HOME/.nuget/packages/mu_nasm/20016.1.1
+          touch $HOME/.nuget/packages/mu_nasm/20016.1.1/mu_nasm.nuspec
+          echo "Fake mu_nasm package to satisfy SDE" > $HOME/.nuget/packages/mu_nasm/20016.1.1/README.md
+
       - name: Build xun firmware
         working-directory: uefi-tb128fu
         env:
           NASM_PREFIX: /usr/bin/
-        run: ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
+          PATH: /usr/bin:$PATH
+        run: |
+          export NASM_PREFIX=/usr/bin/
+          ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
 
       - name: Upload build output
         if: always()
