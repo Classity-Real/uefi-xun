@@ -1,9 +1,5 @@
 name: Build xunPkg
 
-# Manual only, by design: this is an unverified, in-progress platform
-# package (see Platforms/Xiaomi/xunPkg/PORTING.md). It is not meant to
-# fire automatically on every push while the open risks there are
-# unresolved.
 on:
   workflow_dispatch:
     inputs:
@@ -57,45 +53,29 @@ jobs:
           cp uefi-xun/Resources/Configs/xun.toml uefi-tb128fu/Resources/Configs/xun.toml
           if [ -f uefi-xun/Resources/DTBs/xun.dtb ]; then
             cp uefi-xun/Resources/DTBs/xun.dtb uefi-tb128fu/Resources/DTBs/xun.dtb
-            echo "xun.dtb present – good"
+            echo "xun.dtb present - good"
           else
             echo "::warning::Resources/DTBs/xun.dtb is missing"
           fi
 
-      - name: Install system nasm and neutralize broken mu_nasm dependency
+      - name: Install system nasm and disable broken mu_nasm NuGet
         working-directory: uefi-tb128fu
         run: |
           set -eux
           sudo apt-get update
           sudo apt-get install -y nasm
-
-          # Force system nasm
-          export NASM_PREFIX=/usr/bin/
-          echo "NASM_PREFIX=/usr/bin/" >> $GITHUB_ENV
           which nasm
           nasm -v
 
-          # Neutralize every nasm external dependency definition so Stuart
-          # never tries to pull the broken mu_nasm NuGet package.
-          # (The Azure feed for 20016.1.1 is frequently unreachable.)
-          find . -name "*nasm*ext*dep*.yaml" -o -name "*nasm*ext*dep*.yml" | while read f; do
-            echo "Neutralizing $f"
-            cat > "$f" << 'EOF'
-##
-# Neutralized: use system nasm instead of broken mu_nasm NuGet package
-{
-  "scope": "edk2-build",
-  "type": "web",
-  "name": "nasm",
-  "source": "https://example.com/does-not-exist",
-  "version": "0.0.0",
-  "flags": []
-}
-EOF
-          done
+          # Force system nasm for the whole job
+          echo "NASM_PREFIX=/usr/bin/" >> "$GITHUB_ENV"
 
-          # Also remove any pre-existing broken cache entry
-          rm -rf $HOME/.nuget/packages/mu_nasm || true
+          # Delete every nasm external-dependency file so Stuart never
+          # tries to download the broken mu_nasm@20016.1.1 package.
+          find . \( -name '*nasm*ext*dep*.yaml' -o -name '*nasm*ext*dep*.yml' \) -print -delete || true
+
+          # Clear any previous broken nuget cache entry
+          rm -rf "$HOME/.nuget/packages/mu_nasm" || true
 
       - name: Install remaining build dependencies
         working-directory: uefi-tb128fu
