@@ -45,6 +45,16 @@ jobs:
             Silicium-ACPI \
             Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl
 
+          # MdePkg.dec unconditionally lists these two in [Includes], so
+          # EDK2's own DEC parser fails with "File/directory not found in
+          # workspace" if they're not checked out, even though neither is
+          # Mu_Basecore's top-level submodule set -- they're nested
+          # submodules of Mu_Basecore itself.
+          cd Mu_Basecore
+          git submodule update --init --depth 1 -- \
+            MdePkg/Library/MipiSysTLib/mipisyst \
+            MdePkg/Library/BaseFdtLib/libfdt
+
       - name: Overlay xunPkg onto the base tree
         run: |
           set -eux
@@ -92,6 +102,17 @@ jobs:
         run: |
           export NASM_PREFIX=/usr/bin/
           ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
+
+      - name: Print build log
+        if: always()
+        working-directory: uefi-tb128fu
+        run: |
+          set -x
+          find Build -iname "*.log" -o -iname "*.txt" 2>/dev/null | while read -r f; do
+            echo "::group::$f"
+            cat "$f"
+            echo "::endgroup::"
+          done
 
       - name: Upload build output
         if: always()
