@@ -62,25 +62,48 @@ jobs:
             echo "::warning::Resources/DTBs/xun.dtb is missing"
           fi
 
-      - name: Install build dependencies + force system nasm
+      - name: Install system nasm and neutralize broken mu_nasm dependency
         working-directory: uefi-tb128fu
-        env:
-          CI_BUILD: "true"
         run: |
+          set -eux
           sudo apt-get update
-          sudo apt-get install -y nasm python3-pip
-          ./setup_env.sh --package-manager apt || true
+          sudo apt-get install -y nasm
 
-          # Stronger bypass for the broken mu_nasm NuGet
-          mkdir -p $HOME/.nuget/packages/mu_nasm/20016.1.1
-          touch $HOME/.nuget/packages/mu_nasm/20016.1.1/mu_nasm.nuspec
-          echo "Fake mu_nasm package to satisfy SDE" > $HOME/.nuget/packages/mu_nasm/20016.1.1/README.md
-
-          # Force system nasm for the whole job
+          # Force system nasm
           export NASM_PREFIX=/usr/bin/
           echo "NASM_PREFIX=/usr/bin/" >> $GITHUB_ENV
           which nasm
           nasm -v
+
+          # Neutralize every nasm external dependency definition so Stuart
+          # never tries to pull the broken mu_nasm NuGet package.
+          # (The Azure feed for 20016.1.1 is frequently unreachable.)
+          find . -name "*nasm*ext*dep*.yaml" -o -name "*nasm*ext*dep*.yml" | while read f; do
+            echo "Neutralizing $f"
+            cat > "$f" << 'EOF'
+##
+# Neutralized: use system nasm instead of broken mu_nasm NuGet package
+{
+  "scope": "edk2-build",
+  "type": "web",
+  "name": "nasm",
+  "source": "https://example.com/does-not-exist",
+  "version": "0.0.0",
+  "flags": []
+}
+EOF
+          done
+
+          # Also remove any pre-existing broken cache entry
+          rm -rf $HOME/.nuget/packages/mu_nasm || true
+
+      - name: Install remaining build dependencies
+        working-directory: uefi-tb128fu
+        env:
+          CI_BUILD: "true"
+          NASM_PREFIX: /usr/bin/
+        run: |
+          ./setup_env.sh --package-manager apt || true
 
       - name: Build xun firmware
         working-directory: uefi-tb128fu
