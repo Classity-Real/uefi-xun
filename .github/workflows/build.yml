@@ -45,15 +45,16 @@ jobs:
             Silicium-ACPI \
             Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl
 
-          # MdePkg.dec unconditionally lists these two in [Includes], so
-          # EDK2's own DEC parser fails with "File/directory not found in
-          # workspace" if they're not checked out, even though neither is
-          # Mu_Basecore's top-level submodule set -- they're nested
-          # submodules of Mu_Basecore itself.
+          # Several .dec files under Mu_Basecore (MdePkg.dec, MdeModulePkg.dec,
+          # ...) unconditionally list paths inside Mu_Basecore's own NESTED
+          # submodules in [Includes]/[Includes.Common.Private], so EDK2's DEC
+          # parser fails with "File/directory not found in workspace" if any
+          # of them aren't checked out -- regardless of whether this build
+          # actually uses that library. Rather than add them one at a time as
+          # each missing one surfaces, init all of Mu_Basecore's own
+          # submodules up front.
           cd Mu_Basecore
-          git submodule update --init --depth 1 -- \
-            MdePkg/Library/MipiSysTLib/mipisyst \
-            MdePkg/Library/BaseFdtLib/libfdt
+          git submodule update --init --depth 1
 
       - name: Overlay xunPkg onto the base tree
         run: |
