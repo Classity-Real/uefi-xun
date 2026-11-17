@@ -86,10 +86,6 @@ READ_LOCK_STATUS   = TRUE
   INF MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
   INF SiliciumPkg/Drivers/SmBiosTableDxe/SmBiosTableDxe.inf
 
-  # UniXNU
-  INF UniXNUPkg/Application/UniXNU/UniXNU.inf
-  INF UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
-
   # Boot logo/BGRT and the files the default BDS options name (MsBootPolicy,
   # UFP, MassStorage). Without them GetPlatformBootGraphic returns NotFound and
   # the boot order contains no valid option on a Mu-only board.

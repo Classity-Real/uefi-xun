@@ -20,14 +20,6 @@
 
   INF MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
 
-  # The boot image's ramdisk (the UniXNU payload volume) as a read-only block
-  # device. Every range comes from the device tree the previous stage hands
-  # over, so the shengPkg driver serves this board unchanged.
-  INF shengPkg/Drivers/ShengBootMemoryDxe/ShengBootMemoryDxe.inf
-  # The XNU loader is part of the firmware: a driver loaded from a volume is
-  # refused by the image verification of this build.
-  INF DarwinBootPkg/Driver/DarwinBoot.inf
-
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
   INF MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
   INF FatPkg/EnhancedFatDxe/Fat.inf
@@ -45,7 +37,7 @@
   # not proven live without an actual fastboot boot test.
   INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 
-  # Volume up as Enter for the UniXNU menu. NOT YET WORKING for xun: ported
+  # Volume up as Enter for the firmware's boot menu. NOT YET WORKING for xun: ported
   # from tb128fuPkg's Tb128fuKeyInputDxe, which reads TLMM GPIO 5 with a
   # flat MMIO access. xun's own device tree instead puts volume up on the
   # PM6125 PMIC's own GPIO 5, reached over the SPMI PMIC arbiter, not TLMM

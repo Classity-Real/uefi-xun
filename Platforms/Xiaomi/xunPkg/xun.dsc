@@ -91,14 +91,12 @@
 
 [Components]
   #
-  # UniXNU: the boot manager, its registrar, the ramdisk block device and the XNU loader
+  # Goal pivoted away from UniXNU/iPadOS (see PORTING.md): this is now a
+  # plain standards-conformant UEFI firmware meant to boot Windows on ARM64
+  # (and anything else with a standard UEFI loader) via the stock
+  # MdeModulePkg BdsDxe boot manager, not an XNU-specific loader.
   #
-  UniXNUPkg/Application/UniXNU/UniXNU.inf
-  UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
-  shengPkg/Drivers/ShengBootMemoryDxe/ShengBootMemoryDxe.inf
-  DarwinBootPkg/Driver/DarwinBoot.inf
   xunPkg/Drivers/XunKeyInputDxe/XunKeyInputDxe.inf
 
 [LibraryClasses]
-  UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
   FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf

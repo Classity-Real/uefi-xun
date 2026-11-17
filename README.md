@@ -1,10 +1,15 @@
 # uefi-xun
 
 UEFI (Mu-Silicium/EDK2) platform package for the **Xiaomi/Redmi Pad SE**
-(codename **xun**, Qualcomm SM6225 "bengal"), aimed at the
-[UniXNU](https://unixnu.com) boot chain -- the same approach that has
-already gotten a different SM6225 tablet, the Lenovo Xiaoxin Pad 2022
-(**tb128fu**), to the iPadOS 17.7.11 home screen.
+(codename **xun**, Qualcomm SM6225 "bengal"). Goal: a standard,
+standards-conformant UEFI firmware (stock MdeModulePkg boot manager, no
+device-specific loader) capable of booting **Windows on ARM64** and other
+normal UEFI operating systems -- not an XNU/iPadOS loader. An earlier
+version of this repo scaffolded around the UniXNU project (a loader for
+booting Apple's iPadOS on non-Apple ARM hardware, as already done on the
+related tb128fu tablet); that dependency has been dropped. SoC-level boot
+chain and silicon bring-up (shared with tb128fu, same SM6225 family) are
+still reused -- see below.
 
 > **Status: planning / scaffolding.** Nothing in this repository has booted
 > on a real xun unit yet. See `Platforms/Xiaomi/xunPkg/PORTING.md` for the
