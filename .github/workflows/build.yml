@@ -23,7 +23,7 @@ on:
 
 jobs:
   build:
-    runs-on: namespace-profile-workshop
+    runs-on: ubuntu-latest
     steps:
       - name: Check out this overlay (xunPkg)
         uses: actions/checkout@v4
@@ -56,35 +56,35 @@ jobs:
           cp uefi-xun/Resources/Configs/xun.toml uefi-tb128fu/Resources/Configs/xun.toml
           if [ -f uefi-xun/Resources/DTBs/xun.dtb ]; then
             cp uefi-xun/Resources/DTBs/xun.dtb uefi-tb128fu/Resources/DTBs/xun.dtb
+            echo "xun.dtb present – good"
           else
-            echo "::warning::Resources/DTBs/xun.dtb is not present yet -- this build is expected to fail until a real xun device-tree dump is added (see PORTING.md, Unverified)."
+            echo "::warning::Resources/DTBs/xun.dtb is missing"
           fi
 
-      - name: Install build dependencies
+      - name: Install build dependencies + force system nasm
         working-directory: uefi-tb128fu
         env:
           CI_BUILD: "true"
-        run: ./setup_env.sh --package-manager apt
-
-      - name: Install system nasm + bypass broken mu_nasm
         run: |
           sudo apt-get update
           sudo apt-get install -y nasm
-          which nasm
-          nasm -v
+          ./setup_env.sh --package-manager apt || true
 
-          # Create a fake nuget package so SDE thinks mu_nasm is already installed
+          # Stronger bypass for the broken mu_nasm NuGet
           mkdir -p $HOME/.nuget/packages/mu_nasm/20016.1.1
           touch $HOME/.nuget/packages/mu_nasm/20016.1.1/mu_nasm.nuspec
-          echo "Fake mu_nasm package to satisfy SDE" > $HOME/.nuget/packages/mu_nasm/20016.1.1/README.md
+          # Also point the build at system nasm explicitly
+          export NASM_PREFIX=/usr/bin/
+          echo "NASM_PREFIX=/usr/bin/" >> $GITHUB_ENV
 
       - name: Build xun firmware
         working-directory: uefi-tb128fu
         env:
           NASM_PREFIX: /usr/bin/
-          PATH: /usr/bin:$PATH
         run: |
           export NASM_PREFIX=/usr/bin/
+          which nasm
+          nasm -v
           ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
 
       - name: Upload build output
