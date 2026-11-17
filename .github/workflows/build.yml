@@ -45,6 +45,7 @@ jobs:
             Binaries \
             Common/Mu \
             Common/Mu_OEM_Sample \
+            Mu_Basecore \
             Silicium-ACPI \
             Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl
 
@@ -67,15 +68,19 @@ jobs:
           CI_BUILD: "true"
         run: |
           sudo apt-get update
-          sudo apt-get install -y nasm
+          sudo apt-get install -y nasm python3-pip
           ./setup_env.sh --package-manager apt || true
 
           # Stronger bypass for the broken mu_nasm NuGet
           mkdir -p $HOME/.nuget/packages/mu_nasm/20016.1.1
           touch $HOME/.nuget/packages/mu_nasm/20016.1.1/mu_nasm.nuspec
-          # Also point the build at system nasm explicitly
+          echo "Fake mu_nasm package to satisfy SDE" > $HOME/.nuget/packages/mu_nasm/20016.1.1/README.md
+
+          # Force system nasm for the whole job
           export NASM_PREFIX=/usr/bin/
           echo "NASM_PREFIX=/usr/bin/" >> $GITHUB_ENV
+          which nasm
+          nasm -v
 
       - name: Build xun firmware
         working-directory: uefi-tb128fu
@@ -83,8 +88,6 @@ jobs:
           NASM_PREFIX: /usr/bin/
         run: |
           export NASM_PREFIX=/usr/bin/
-          which nasm
-          nasm -v
           ./build_uefi.py -d xun -r ${{ inputs.build_mode }}
 
       - name: Upload build output
