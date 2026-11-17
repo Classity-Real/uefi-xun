@@ -3,9 +3,12 @@
 > **Planning/scaffolding stage.** Nothing in this package has been built or run
 > on a Xiaomi/Redmi Pad SE yet. This is a skeleton seeded from tb128fuPkg
 > (Lenovo Xiaoxin Pad 2022, same SM6225/bengal SoC family, which IS reported
-> to boot to the iPadOS 17.7.11 home screen), adapted with the device
-> readouts published in `KernelZero123/UniXNU-xun`'s `docs/DEVICE.md`. See
-> the top-level `README.md` for the phased plan this package is Phase 0/1 of.
+> to boot to the iPadOS 17.7.11 home screen), originally adapted with the
+> device readouts published in `KernelZero123/UniXNU-xun`'s `docs/DEVICE.md`,
+> then corrected and partly confirmed 2026-11-17 against a direct
+> `/proc/iomem` + boot image readout off the user's own xun unit (details
+> throughout this file and in `MemoryMapLib.c`). See the top-level
+> `README.md` for the phased plan this package is Phase 0/1 of.
 
 This adds the Xiaomi/Redmi Pad SE (xun, SM6225 bengal) to the Mu-Silicium
 tree and integrates UniXNU, the same way tb128fuPkg does for the Lenovo
@@ -27,12 +30,12 @@ Xiaoxin Pad 2022.
 
 | Item | tb128fu | xun |
 |---|---|---|
-| Panel | 1200x2000, hx83102p | 1200x1920 portrait native (HUAXING `m84_42_03_0c`, video-mode FHD+); two other known panel variants (`m84_35_03_0b`, `m84_36_02_0a`) not yet confirmed absent |
-| Touch | Himax HX83102E over SPI | FocalTech FT8203 over SPI, IRQ GPIO 478, reset GPIO 484, firmware `focaltech_ts_fw_huaxing_ft8203.bin` -- Phase 3, not implemented here |
-| Storage | UFS (NativeUfs path) | eMMC via `4784000.sdhci` (`mmcblk0`), slot A, `boot_a`/`boot_b` 128 MiB each, `userdata` on `mmcblk0p91` at LBA `0x1D16000` -- Phase 2, not implemented here |
-| Boot image | header v1, single boot.img, `fastboot flash boot_a` works, `fastboot boot` buffer is too small | header **v4**, separate `boot`/`init_boot`/`vendor_boot` -- how to get a test FD booted via fastboot is **unverified**, see below |
-| DRAM layout | two banks, no gap | **three banks with a real hole**: `0x40000000`+`0x3CC00000` (ends `0x7CC00000`), `0x80000000`+`0x40000000`, `0xC0000000`+`0x100000000`. ~6092 MiB visible to the kernel. Do not reuse tb128fu's `dram_size`. |
-| Splash framebuffer | ABL leaves a live `cont_splash_region` for `SimpleFbDxe` to scan out | **No `cont_splash_region` found** on the real unit read in `docs/DEVICE.md` -- see "Unverified", this is the single biggest open risk in this package |
+| Panel | 1200x2000, hx83102p | 1200x1920 portrait native (HUAXING `m84_42_03_0c`, video-mode FHD+) -- **confirmed directly from a live kernel cmdline** (`qcom,mdss_dsi_panel_m84_42_03_0c_fhdp_video`) on the user's own unit, 2026-11-17, matching KernelZero123's independent reading; two other known panel variants (`m84_35_03_0b`, `m84_36_02_0a`) exist on other units |
+| Touch | Himax HX83102E over SPI | FocalTech FT8203 over SPI -- driver name **confirmed** from the same cmdline (`focaltech_ts_spi.tpsensor=focaltech_ts_ab`); IRQ GPIO 478 / reset GPIO 484 / firmware `focaltech_ts_fw_huaxing_ft8203.bin` still inherited, not independently confirmed -- Phase 3, not implemented here |
+| Storage | UFS (NativeUfs path) | eMMC via `4784000.sdhci` (`mmcblk0`), slot A, `boot_a`/`boot_b` 128 MiB each, `userdata` on `mmcblk0p91` -- confirmed by position/size in a live `/proc/partitions` + GPT read, 2026-11-17 -- Phase 2, not implemented here |
+| Boot image | header v1, single boot.img, `fastboot flash boot_a` works, `fastboot boot` buffer is too small | header **v4, confirmed** by parsing the real `boot_a`/`vendor_boot_a` image headers, 2026-11-17 -- kernel/ramdisk/tags offsets also confirmed matching. Whether `fastboot boot` works the same way against a v4 image is still **unverified**, see below |
+| DRAM layout | two banks, no gap | **two regions with one real hole, confirmed from `/proc/iomem`, 2026-11-17** -- corrected from an earlier 3-bank estimate: `0x40000000`+`0x3BB00000` (ends `0x7BB00000`), then `0x80000000`+`0x1C0000000` (7 GiB, single contiguous span, no second gap at `0xC0000000` as previously assumed). Consistent with an 8 GB RAM xun variant; re-check on a different RAM SKU. |
+| Splash framebuffer | ABL leaves a live `cont_splash_region` for `SimpleFbDxe` to scan out | **Still unconfirmed either way.** `/proc/iomem` confirms the expected address range is reserved, but a device-tree pull meant to settle this definitively failed in the 2026-11-17 session (see "Unverified", item 1) -- still the single biggest open risk in this package |
 
 ## Changes in this package
 
@@ -53,16 +56,23 @@ Xiaoxin Pad 2022.
 * `Drivers/XunKeyInputDxe` -- `Tb128fuKeyInputDxe` renamed, new FILE_GUID.
   GPIO numbering (volume up on TLMM GPIO 5 as Enter) assumed unchanged from
   tb128fu -- **not confirmed against xun's own device tree.**
-* `Library/MemoryMapLib` -- rebuilt from `docs/DEVICE.md`'s live readout
-  (three DRAM banks with the `0x7CC00000`..`0x80000000` hole; splash/
-  ramoops/removed block kept at tb128fu's addresses since the readout found
-  the same footprint; SDHCI eMMC controller region added at `0x04784000`).
+* `Library/MemoryMapLib` -- rebuilt twice: first from `docs/DEVICE.md`'s
+  readout (a 3-bank estimate), then corrected 2026-11-17 against a live
+  `/proc/iomem` + boot image header read off a real unit -- the actual DRAM
+  layout is two regions with a hole at `0x7BB00000`..`0x80000000`, not
+  three banks with a second gap at `0xC0000000`. Splash/ramoops/removed
+  block address range confirmed unchanged; SDHCI eMMC controller region at
+  `0x04784000`; Boot Image/Ramdisk placement confirmed from the real
+  `vendor_boot_a` header (kernel 0x8000, ramdisk 0x1000000, tags 0x100,
+  relative to base 0x80000000).
 * `Library/ConfigurationMapLib` -- SoC-generic entries kept as-is; board
   addresses inherited from tb128fu's tree (`SharedIMEMBaseAddr`,
-  `DloadCookieAddr`, `TzAppsRegnAddr`/`Size`) are flagged unverified for xun.
-* `Resources/Configs/xun.toml` -- FD base/size carried over (same free gap);
-  `header_version = 4` set to match xun's real boot image format, but with
-  the open risk noted inline (see "Unverified").
+  `DloadCookieAddr`, `TzAppsRegnAddr`/`Size`) are still flagged unverified
+  for xun -- this dump did not touch them.
+* `Resources/Configs/xun.toml` -- FD base/size carried over (same free gap,
+  confirmed); `header_version = 4` and the kernel/ramdisk/tags offsets are
+  now **confirmed**, not inherited placeholders (see "Unverified" for what's
+  still open about boot image handling).
 * `Resources/DTBs/xun.dtb` -- **not yet present.** tb128fu's equivalent is
   the merged live Khaje IDP tree with bootargs/initrd properties stripped.
   Need the same treatment for a real xun device-tree dump before Phase 1 can
@@ -86,19 +96,41 @@ export UNIXNU_UEFI=$PWD/../uefi-xun
 ## Unverified
 
 These are the open questions blocking Phase 1, roughly in the order they
-need to be resolved:
+need to be resolved. Items marked **RESOLVED** were settled 2026-11-17
+against a real xun unit's own `/proc/iomem`, `/proc/partitions`, GPT, and
+`boot_a`/`vendor_boot_a` image headers (see the readout summary at the top
+of `Library/MemoryMapLib/MemoryMapLib.c`).
 
-1. **No `cont_splash_region` on xun.** tb128fu's entire display strategy is
-   "scan out whatever ABL already left running." The live readout in
-   `docs/DEVICE.md` did not find that region on xun. Until this is
-   re-checked against xun's actual device tree (not just the reserved
-   address range, which does match), `SimpleFbDxe` may come up with no
-   framebuffer to publish at all, and the UEFI menu may not be visible even
-   if everything else works.
-2. **Boot image header v4.** Whether `fastboot boot` accepts a v4-packed FD
-   the way it accepts tb128fu's v1 image, or whether the payload needs to go
-   through `vendor_boot` instead. This blocks even a first `fastboot boot`
-   test of this package.
+1. **No `cont_splash_region` confirmation on xun -- STILL OPEN, now the
+   single clearest blocker.** tb128fu's entire display strategy is "scan out
+   whatever ABL already left running." `/proc/iomem` confirms the expected
+   address range (`0x5C000000`..`0x5D200000`) is reserved, which is
+   necessary but not sufficient to prove a live framebuffer is actually
+   there. The direct check -- grepping the real device tree for a
+   `reserved-memory` node under that name -- was attempted but **failed**:
+   the dump ran `tar -cf ... /proc/device-tree`, which only archived the
+   symlink itself (`/proc/device-tree -> /sys/firmware/devicetree/base`),
+   not its contents. **To actually resolve this**, re-run with
+   dereferencing, e.g. (as root, in Termux or adb shell):
+   ```sh
+   cp -rL /sys/firmware/devicetree/base /sdcard/xun_dump/dt_dump
+   # or: tar -chf /sdcard/xun_dump/device-tree.tar -C / proc/device-tree
+   find /sdcard/xun_dump/dt_dump -iname "*splash*" -o -iname "*cont*"
+   ```
+   and look for a node under `reserved-memory` with `display-reserved`,
+   `cont-splash-mem`, or similar in its name/compatible string. If nothing
+   turns up, the display strategy inherited from tb128fu (Phase 1's whole
+   premise) needs to be rethought before anything else in this package is
+   worth trusting.
+2. **RESOLVED -- boot image header v4.** Both `boot_a` and `vendor_boot_a`
+   confirmed `header_version = 4` by directly parsing their Android boot
+   image headers; `vendor_boot_a`'s header also confirmed the
+   kernel/ramdisk/tags load offsets already in `xun.toml`/`MemoryMapLib.c`.
+   **Still open:** whether `fastboot boot` accepts a v4-packed FD the same
+   way it accepts tb128fu's v1 image, or whether the payload needs to go
+   through `vendor_boot`'s ramdisk-table mechanism instead. This blocks even
+   a first `fastboot boot` test of this package, and needs an actual attempt
+   on hardware to answer, not a header read.
 3. Whether xun's ABL is also a thin Linux loader with no extractable vendor
    DXE (as assumed in `RAW.inc` and `PcdBuildXblHobs|FALSE`), or whether
    Xiaomi's bengal ABL differs from Lenovo's enough to carry real vendor DXE
@@ -107,8 +139,9 @@ need to be resolved:
    holds on xun's own pinctrl, not just inherited from tb128fu.
 5. Whether `SharedIMEMBaseAddr`, `DloadCookieAddr`, `TzAppsRegnAddr`/`Size`
    in `ConfigurationMapLib` (confirmed against TB128FU's device tree, not
-   xun's) are safe to reuse.
-6. Which of the three known xun panel variants (`m84_35_03_0b`,
-   `m84_36_02_0a`, `m84_42_03_0c`) is on hand -- `docs/DEVICE.md` confirms
-   `m84_42_03_0c` on the unit it read, but that may not match every xun in
-   the wild.
+   xun's) are safe to reuse. Not touched by the 2026-11-17 dump.
+6. **Narrowed, not fully resolved -- panel variant.** `m84_42_03_0c` is now
+   confirmed directly from a live cmdline on the user's own unit (not just
+   inherited from `docs/DEVICE.md`), so this specific unit is settled. The
+   other two known variants (`m84_35_03_0b`, `m84_36_02_0a`) may still exist
+   on other xun units in the wild and would need their own panel ID check.

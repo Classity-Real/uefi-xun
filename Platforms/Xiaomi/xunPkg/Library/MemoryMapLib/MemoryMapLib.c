@@ -1,31 +1,53 @@
 // Memory map of the Xiaomi/Redmi Pad SE (xun, SM6225 bengal, Khaje IDP).
 //
-// Unlike tb128fuPkg (whose memory map this file was seeded from), these
-// addresses come from a live readout of a real xun unit on 2026-10-31
-// (see docs/DEVICE.md), not from a device tree dump. Two load-bearing facts
-// from that readout:
+// Re-derived 2026-11-17 from a root `/proc/iomem` + boot/vendor_boot image
+// readout taken directly off a real xun unit (the user's own tablet), which
+// superseded and CORRECTED the earlier estimate seeded from
+// KernelZero123/UniXNU-xun's docs/DEVICE.md (that estimate assumed a
+// 3-bank layout with a second gap at 0xC0000000 -- this unit does not have
+// one; see below). Load-bearing facts from this live readout:
 //
-//   * DRAM is three banks with a hole between them, not tb128fu's two banks:
-//       Bank 0: 0x40000000, 0x3CC00000 (ends 0x7CC00000)
-//       Bank 1: 0x80000000, 0x40000000 (ends 0xC0000000)
-//       Bank 2: 0xC0000000, 0x100000000 (ends 0x1C0000000)
-//     total visible to the kernel is ~6092 MiB. Do NOT reuse tb128fu's
-//     dram_size/bank layout.
+//   * DRAM is two regions, NOT three banks:
+//       Region 0: 0x40000000, 0x3BB00000 (ends 0x7BB00000 -- corrected from
+//                 the earlier 0x7CC00000 estimate, a ~17 MiB difference)
+//       Region 1: 0x80000000, 0x1C0000000 (7 GiB exactly, ends 0x240000000,
+//                 single contiguous "System RAM" entry in /proc/iomem --
+//                 there is no second gap at 0xC0000000 on this unit)
+//     This is consistent with an 8 GB RAM xun variant. A different RAM SKU
+//     of this device could still differ -- re-check `/proc/iomem` if
+//     porting to a unit that reports a different total.
 //
-//   * The splash/dfps/ramoops/removed reservations occupy 0x5C000000 to
-//     0x63900000 -- the SAME footprint tb128fu uses for its display/DXE-heap/
-//     FD/removed block. The free gap in the middle, 0x5D200000..0x60000000,
-//     is the same shape as tb128fu's, so the FD placement at
-//     0x5FC00000 (3 MiB) is carried over unchanged. This part of the map
-//     really is SoC/ABL-common and safe to copy.
+//   * The splash/ramoops/removed reservations occupy 0x5C000000 to
+//     0x63900000, confirmed unchanged from the earlier estimate:
+//     `/proc/iomem` shows `5c000000-5d1fffff : reserved` and
+//     `60000000-638fffff : reserved` inside the `56217000-5fffffff` System
+//     RAM span. The free gap in the middle, 0x5D200000..0x60000000, is
+//     real, so the FD placement at 0x5FC00000 (3 MiB) still fits.
 //
-// What is NOT safe to copy, and is the biggest open risk in this file:
-// xun's ABL does NOT appear to leave a cont_splash_region the way tb128fu's
-// does. tb128fuPkg's SimpleFbDxe strategy (scan out whatever ABL left
-// running in the splash buffer) has nothing to attach to here. Until this is
-// re-checked against the device tree xun actually boots with, treat the
-// "Display Reserved" / "DFPS Data" regions below as reserved address space
-// only -- NOT as a confirmed live framebuffer. See PORTING.md, "Unverified".
+//   * Boot image load addresses are CONFIRMED, not inherited placeholders:
+//     both `boot_a` and `vendor_boot_a` partitions report Android boot
+//     header_version 4 (resolves the header-v4 open risk in PORTING.md),
+//     and vendor_boot's own header gives kernel_addr 0x8000, ramdisk_addr
+//     0x1000000, tags_addr 0x100 (all relative to base 0x80000000) --
+//     exactly the Boot Image / Ramdisk placement already used below.
+//
+//   * Panel and touch are CONFIRMED from a live kernel cmdline, not just
+//     inherited: `qcom,mdss_dsi_panel_m84_42_03_0c_fhdp_video` (matches
+//     KernelZero123's m84_42_03_0c reading) and `focaltech_ts_spi` with
+//     `tpsensor=focaltech_ts_ab` (FocalTech over SPI, consistent with
+//     FT8203). GPIO numbers for touch IRQ/reset are still not confirmed --
+//     the live device-tree pull needed for that failed (see PORTING.md).
+//
+// STILL OPEN: whether xun's ABL leaves a live `cont_splash_region`. The
+// `/proc/iomem` reserved ranges above match the expected address range,
+// but that only proves the address space is set aside, not that a splash
+// framebuffer is actually live there -- the device-tree pull that would
+// prove it one way or the other (grep for reserved-memory node names)
+// failed in this session because `tar` was run on the `/proc/device-tree`
+// symlink without dereferencing it. Re-run with `cp -rL
+// /sys/firmware/devicetree/base dt_dump` (or `tar -h`) to get a real
+// answer. Until then, treat "Display Reserved" below as reserved address
+// space only -- NOT a confirmed live framebuffer. See PORTING.md.
 #include <Library/MemoryMapLib.h>
 
 STATIC
@@ -58,22 +80,21 @@ gMemoryDescriptor[] = {
   {"Log Buffer",         0x5FFF7000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
   {"Info Blk",           0x5FFFF000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
   {"Removed Region",     0x60000000, 0x03900000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
-  {"DRAM 0x63900000",    0x63900000, 0x19300000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
+  {"DRAM 0x63900000",    0x63900000, 0x18200000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
 
-  // End of Bank 0 at 0x7CC00000. There is a real hole here on xun (no RAM
-  // 0x7CC00000..0x80000000) -- unlike tb128fu, which has no gap at this
-  // address. Do not add a region spanning across it.
+  // End of Region 0 at 0x7BB00000 (confirmed from /proc/iomem -- corrected
+  // from an earlier 0x7CC00000 estimate). There is a real hole here on xun
+  // (no RAM 0x7BB00000..0x80000000) -- unlike tb128fu, which has no gap at
+  // this address. Do not add a region spanning across it.
 
-  // DDR Bank 1: 0x80000000 .. 0xC0000000. Reserve the boot image load
-  // window the way tb128fu does (kernel+DTB, then ramdisk) until the actual
-  // xun boot header v4 load addresses are confirmed -- see PORTING.md,
-  // "Unverified". These offsets are inherited placeholders, not measured.
+  // DDR Region 1: 0x80000000 .. 0x240000000 (7 GiB), confirmed as one
+  // contiguous span from /proc/iomem -- no second gap at 0xC0000000 on
+  // this unit (see file header). Boot Image/Ramdisk placement here is
+  // CONFIRMED from the real boot_a/vendor_boot_a header fields, not an
+  // inherited placeholder.
   {"Boot Image",         0x80000000, 0x01000000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
   {"Ramdisk",            0x81000000, 0x03800000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
-  {"DRAM 0x84800000",    0x84800000, 0x3B800000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
-
-  // DDR Bank 2: 0xC0000000 .. 0x1C0000000, all conventional.
-  {"DRAM 0xC0000000",    0xC0000000, 0x100000000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,  WRITE_BACK_XN},
+  {"DRAM 0x84800000",    0x84800000, 0x1BB800000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,  WRITE_BACK_XN},
 
   // Other Memory Regions
   {"IMEM Base",          0x0C100000, 0x00026000, NoHob,  MMAP_IO, INITIALIZED, Conv, NS_DEVICE},

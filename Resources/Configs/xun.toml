@@ -26,21 +26,18 @@ append_dtb         = true
 #
 # Android Boot Image Configs
 #
-# *** UNVERIFIED / MAIN OPEN RISK (see PORTING.md) ***
+# CONFIRMED 2026-11-17 against the user's own xun unit's real boot_a and
+# vendor_boot_a partitions (parsed their Android boot image headers
+# directly): both report header_version = 4, and vendor_boot_a's header
+# gives kernel_addr 0x8000, ramdisk_addr 0x1000000, tags_addr 0x100 (all
+# relative to base 0x80000000) -- exactly the values below. This was
+# previously an inherited placeholder from tb128fu's v1 layout; it has now
+# been independently verified to be correct for xun too.
 #
-# tb128fu uses a header v1 boot image (single boot.img carrying kernel +
-# ramdisk + DTB, loaded via `fastboot boot`). xun's stock boot image is
-# header v4, with the ramdisk split out into a separate init_boot/vendor_boot
-# partition pair. header_version is set to 4 below to match xun's actual
-# partition layout, but nothing downstream in this tree has been checked
-# against a v4 image yet:
-#   * Whether `fastboot boot` even accepts a v4-packed FD+kernel+ramdisk the
-#     same way it accepts a v1 image, or whether the payload has to be
-#     assembled into vendor_boot instead.
-#   * Whether kernel_offset/ramdisk_offset/tags_offset below (copied from
-#     tb128fu's v1 layout) mean the same thing for a v4 header, or need to
-#     be replaced with v4's dedicated ramdisk-table fields.
-# Resolve this BEFORE trusting a Phase 1 build -- see Resources/Scripts and
+# Still NOT resolved: whether `fastboot boot` accepts a v4-packed FD the
+# same way it accepts tb128fu's v1 image, or whether the payload needs to
+# go through vendor_boot's ramdisk-table mechanism instead. The header
+# fields are confirmed; the actual boot-time behavior is not. See
 # PORTING.md, "Unverified".
 #
 [boot_image]

@@ -47,3 +47,36 @@ file for the authoritative original.
   were already read (see above); the eMMC block driver, the actual boot
   header v4 payload format, and a confirmed live framebuffer strategy were
   not.
+
+## Direct readout, 2026-11-17 (this repo, user's own unit, rooted)
+
+A root dump (`/proc/iomem`, `/proc/partitions`, GPT, `boot_a`/`vendor_boot_a`
+image headers, kernel cmdline) was taken directly off the user's own xun
+tablet and used to correct and confirm parts of the upstream readout above.
+Full detail is in `Platforms/Xiaomi/xunPkg/PORTING.md` and the header
+comment of `Library/MemoryMapLib/MemoryMapLib.c`; summary:
+
+- **Corrected:** actual DRAM layout is two regions, not three banks --
+  `0x40000000`+`0x3BB00000` (ends `0x7BB00000`, not `0x7CC00000` as the
+  upstream estimate had it), then a single contiguous 7 GiB region at
+  `0x80000000`..`0x240000000` with no second gap at `0xC0000000`. Consistent
+  with an 8 GB RAM xun variant.
+- **Confirmed:** panel `m84_42_03_0c` and FocalTech SPI touch, directly from
+  a live kernel cmdline (`qcom,mdss_dsi_panel_m84_42_03_0c_fhdp_video`,
+  `focaltech_ts_spi.tpsensor=focaltech_ts_ab`) -- independent confirmation of
+  the upstream reading, not just a repeat of it.
+- **Confirmed:** `boot_a` and `vendor_boot_a` both report Android boot
+  header_version 4; `vendor_boot_a`'s own header gives kernel/ramdisk/tags
+  load offsets matching what was already inherited into this repo's
+  `xun.toml`.
+- **Confirmed:** splash/ramoops/removed reserved address range
+  (`0x5C000000`..`0x63900000`) matches the upstream reading exactly.
+- **Still NOT resolved:** whether a live `cont_splash_region` actually
+  exists. The attempt to check this directly (pulling the real device tree)
+  failed in this session because the dump command ran `tar` on
+  `/proc/device-tree` without dereferencing the symlink it actually is --
+  see `PORTING.md`, "Unverified", item 1, for the corrected command to
+  re-try this.
+- Touch IRQ/reset GPIO numbers (478/484) and the FT8203 firmware filename
+  were not independently re-checked by this dump -- still inherited from
+  the upstream reading.
