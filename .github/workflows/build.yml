@@ -100,5 +100,7 @@ jobs:
           name: xun-uefi-${{ inputs.build_mode }}
           path: |
             uefi-tb128fu/Build/xunPkg/**/FV/SILICIUM_UEFI.fd
+            uefi-tb128fu/Build/xunPkg/**/*.img
+            uefi-tb128fu/Build/xunPkg/**/*boot*.bin
             uefi-tb128fu/Build/xunPkg/**/*.log
           if-no-files-found: warn
