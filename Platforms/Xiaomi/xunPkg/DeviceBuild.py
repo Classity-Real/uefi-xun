@@ -152,6 +152,14 @@ class PlatformBuilder (UefiBuilder, BuildSettingsManager):
 
         self.env.SetValue ("PRODUCT_NAME", "xun", "Platform Hardcoded")
         self.env.SetValue ("ACTIVE_PLATFORM", "xunPkg/xun.dsc", "Platform Hardcoded")
+        # xunPkg has no xun.dec, same as the tb128fuPkg this was ported from --
+        # Mu_Basecore's DebugMacroCheck pre-build plugin needs one to locate
+        # ACTIVE_PLATFORM's containing package (Edk2Path.GetContainingPackage
+        # returns None without it, which crashes Path(None) before any real
+        # compilation starts). Disabling the check, not adding a fake .dec,
+        # since a real one would need real [Guids]/[Protocols]/[PPIs]
+        # declarations xunPkg doesn't own.
+        self.env.SetValue ("DISABLE_DEBUG_MACRO_CHECK", "TRUE", "Platform Hardcoded -- see comment above")
         self.env.SetValue ("TARGET_ARCH", "AARCH64", "Platform Hardcoded")
         self.env.SetValue ("TOOL_CHAIN_TAG", "CLANGPDB", "set default to clangpdb")
         self.env.SetValue ("EMPTY_DRIVE", "FALSE", "Default to false")
